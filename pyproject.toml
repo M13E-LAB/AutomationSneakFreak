@@ -1,0 +1,137 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "etl_data_warehousing"
+description = "A pipeline template"
+readme = "README.md"
+keywords = ["content", "pipeline"]
+authors = [{ name = "Loré" }]
+requires-python = ">=3.11"
+dynamic = ["version"]
+dependencies = [
+  "requests",
+  "requests[socks]",
+  "click",
+  "sqlalchemy>=2.0.40",
+  "responses>=0.25.7",
+  "psycopg2-binary",
+  "snowflake-connector-python",
+  "pandas",
+  "snowflake-connector-python[pandas]",
+  "faker"
+]
+
+[tool.setuptools]
+py-modules = ["pipeline", "config", "connector", "utils", "pipeline_example"]
+
+[project.optional-dependencies]
+# Add your optional dependencies here
+
+[tool.uv]
+dev-dependencies = [
+  "coveralls",
+  "pytest",
+  "pytest-cov",
+  "pytest-socket",
+  "pytest-timeout",
+  "pytest-sugar",
+  "pytest-mock",
+  "ruff",
+  "python-dotenv",
+  "moto"
+]
+
+[tool.pytest.ini_options]
+timeout = 5
+env = ["PYTHONDONTWRITEBYTECODE=1"]
+addopts = [
+  "-s",
+  # Report warnings
+  "-rw",
+  # Do not activate any cache
+  "-p",
+  "no:cacheprovider",
+  # Display the 50 slowest tests
+  "--durations=50",
+  # Prevent tests from using external connections. Check https://pypi.org/project/pytest-socket/ for any aletrations
+  "--disable-socket",
+  # Don't even try to evaluate the coverage if at least 1 test fails
+  "--no-cov-on-fail",
+  # List packages on which the coverage should be evaluated
+  "--cov=package",
+  # Get the coverage report in HTML
+  "--cov-report",
+  "html",
+  # In stdout, print the coverage report with this option
+  "--cov-report",
+  "term-missing:skip-covered",
+]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+omit = ["*/site-packages/*", "*/distutils/*", "tests/*", ".venv/*"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "if self.debug",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if 0:",
+  "if __name__ == __main__:",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = ["tests"]
+
+[tool.ruff.lint]
+# Preview to be sure not to miss any rule
+preview = true
+# See https://docs.astral.sh/ruff/rules/
+select = [
+  # F: Pyflakes
+  "F",
+  # E: pycodestyle Error
+  "E",
+  # W: pycodestyle Warning
+  "W",
+  # C90: mccabe
+  "C90",
+  # I: isort
+  "I",
+  # Optional:
+  # "UP",  <-- may recommend actions in opposition with python core recommendations (for logs for instance)
+  # "ANN",  <-- may recommend actions in opposition with mypy core recommendations (return type for __init__ for instance)
+  "ASYNC",
+  # "S",  <-- may be blocking for subprocess
+  "B",
+  "RET",
+  "SIM",
+  "TCH",
+  "RUF",
+]
+
+ignore = []
+
+[tool.ruff.lint.isort]
+combine-as-imports = false
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "lf"
+indent-style = "space"
+exclude = ["terraform"]
+docstring-code-format = true
