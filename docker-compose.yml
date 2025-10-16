@@ -1,0 +1,208 @@
+version: "3.11"
+
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
+    command:
+      - redpanda start
+      - --overprovisioned
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --node-id 0
+      - --check=false
+      # Two listeners on DIFFERENT ports:
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://localhost:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+    ports:
+      - "9092:9092"     # internal listener for other containers
+      - "19092:19092"   # external listener for host (laptop)
+      - "9644:9644"     # metrics
+      - "18082:18082"   # proxy (optional)
+    networks:
+      - redpanda-net
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info --brokers=redpanda:9092 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: redpanda-console
+    environment:
+      - KAFKA_BROKERS=redpanda:9092
+    ports:
+      - "8080:8080"   # Web UI
+    depends_on:
+      - redpanda
+    networks:
+      - redpanda-net
+  
+  # Build the Python app once
+  app-base:
+    build:
+      context: .
+      args:
+        PYTHON_VERSION: "3.11"
+        VARIANT: "slim"
+    image: kafka-lab:latest
+    container_name: app-base
+    command: ["bash"]
+    # mount code for live editing (optional)
+    volumes:
+      - ./:/app
+    # share the same network so "redpanda:9092" works from inside
+    depends_on:
+      - redpanda
+
+  # Producer service
+  producer:
+    image: kafka-lab:latest
+    container_name: producer
+    ports:
+      - "8001:8001"  # Prometheus metrics
+    environment:
+      KAFKA_BOOTSTRAP_HOST: redpanda        # host part for producer script
+      KAFKA_BOOTSTRAP_PORT: 9092            # port part for producer script
+      KAFKA_TOPIC_NAME: sneaker-orders
+    command: ["python", "-u", "src/producer_order_status.py"]
+    volumes:
+      - ./:/app
+    depends_on:
+      - redpanda
+    networks:
+      - redpanda-net
+
+
+  # Consumer service
+  consumer:
+    image: kafka-lab:latest
+    container_name: consumer
+    ports:
+      - "8002:8002"  # Prometheus metrics
+    environment:
+      KAFKA_BOOTSTRAP: redpanda:9092
+      KAFKA_TOPIC_NAME: sneaker-orders
+      SNOWFLAKE_USER: ANOUAR
+      SNOWFLAKE_PASSWORD: Popez798@@@!!798!!@@
+      SNOWFLAKE_ACCOUNT: gupyoza-zq65095
+      SNOWFLAKE_ROLE: ACCOUNTADMIN
+      SNOWFLAKE_WAREHOUSE: TEACH_WH
+      SNOWFLAKE_DATABASE: RETAIL_LAB
+      SNOWFLAKE_SCHEMA: STG
+    command: ["python", "-u", "src/consumer_to_snowflake.py"]
+    volumes:
+      - ./:/app
+    depends_on:
+      - redpanda
+    networks:
+      - redpanda-net
+
+  # Prometheus - Collecte des métriques
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - redpanda-net
+
+  # Grafana - Visualisation des métriques
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    networks:
+      - redpanda-net
+
+  # PostgreSQL - Base de données pour Airflow
+  postgres:
+    image: postgres:13
+    container_name: airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - redpanda-net
+
+  # Airflow Webserver
+  airflow-webserver:
+    image: apache/airflow:2.7.0
+    container_name: airflow-webserver
+    ports:
+      - "8081:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: 'MayDSSvH7fshel-6goCLhCrrbtU9z_qli-KXXQWOnQ4='
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'secret_key_for_airflow_webserver'
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./reports:/opt/airflow/reports
+    depends_on:
+      - postgres
+    command: webserver
+    networks:
+      - redpanda-net
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.7.0
+    container_name: airflow-scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: 'MayDSSvH7fshel-6goCLhCrrbtU9z_qli-KXXQWOnQ4='
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./reports:/opt/airflow/reports
+    depends_on:
+      - postgres
+    command: scheduler
+    networks:
+      - redpanda-net
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  postgres_data:
+
+networks:
+  redpanda-net:
+    driver: bridge

@@ -1,0 +1,15 @@
+# Variables d'environnement pour le projet sneakers
+# Copiez ces variables dans votre terminal ou fichier .env
+
+export KAFKA_TOPIC_NAME=sneaker-orders
+
+export SNOWFLAKE_ACCOUNT=gupyoza-zq65095
+export SNOWFLAKE_USER=ANOUAR
+export SNOWFLAKE_PASSWORD='Popez798@@@!!798!!@@'
+export SNOWFLAKE_ROLE=ACCOUNTADMIN
+export SNOWFLAKE_WAREHOUSE=TEACH_WH
+export SNOWFLAKE_DATABASE=RETAIL_LAB
+export SNOWFLAKE_SCHEMA=STG
+
+
+

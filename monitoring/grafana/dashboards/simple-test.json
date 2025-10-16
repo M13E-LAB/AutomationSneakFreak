@@ -1,0 +1,49 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Simple Sneaker Test",
+    "tags": ["test"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Orders Sent Total",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(sneaker_orders_sent_total)",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "Orders Consumed Total",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(sneaker_orders_consumed_total)",
+            "refId": "A"
+          }
+        ],
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        }
+      }
+    ],
+    "time": {
+      "from": "now-5m",
+      "to": "now"
+    },
+    "refresh": "5s"
+  }
+}
